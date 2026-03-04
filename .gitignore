@@ -27,3 +27,13 @@
 
 # Crash / diagnostic
 sysinfo.txt
+
+# VS Code (optional; keep if you want shared settings)
+# .vscode/
+
+# Plastic / Unity Version Control leftovers
+.plastic/
+ignore.conf
+
+# OS junk
+.DS_Store
