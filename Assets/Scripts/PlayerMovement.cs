@@ -11,6 +11,13 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float firstJumpHeight = 1f;
     [SerializeField] private float secondJumpHeight = 1.5f;
     [SerializeField] private float fastFallExtra = 100f;
+
+    [Header("Animation")]
+    [SerializeField] private Animator animator;
+
+    [Header("Slide")]
+    [SerializeField] private float slideDuration = 0.7f;
+
     private readonly float[] lanePositions = { -2f, 0f, 2f };
     private int currentLane = 1;
     private float targetX;
@@ -18,6 +25,9 @@ public class PlayerMovement : MonoBehaviour
     private float groundY;
     private float verticalVelocity = 0f;
     private int jumpsUsed = 0;
+
+    private bool isSliding = false;
+    private float slideTimer = 0f;
 
     private const float groundTolerance = 0.01f;
 
@@ -30,6 +40,21 @@ public class PlayerMovement : MonoBehaviour
         pos.x = targetX;
         pos.y = groundY;
         transform.position = pos;
+
+        if (animator == null)
+        {
+            animator = GetComponentInChildren<Animator>();
+            if (animator == null)
+            {
+                animator = GetComponent<Animator>();
+            }
+        }
+
+        if (animator != null)
+        {
+            animator.SetBool("IsGrounded", true);
+            animator.SetBool("IsSliding", false);
+        }
     }
 
     void Update()
@@ -38,9 +63,17 @@ public class PlayerMovement : MonoBehaviour
             return;
 
         HandleLaneInput();
-        HandleJumpInput();
+
+        // Allow either action to interrupt the other:
+        HandleSlideInput(); // Down can interrupt Jump (via AnyState->Slide)
+        HandleJumpInput();  // Up can interrupt Slide
+
         ApplyVerticalMovement();
         ApplyHorizontalMovement();
+
+        TickSlideTimer();
+        UpdateAnimatorBools();
+        AutoEndSlideIfAirborne(); // optional safety: prevents "sliding in midair forever"
     }
 
     void HandleLaneInput()
@@ -72,18 +105,46 @@ public class PlayerMovement : MonoBehaviour
         if (Keyboard.current.wKey.wasPressedThisFrame ||
             Keyboard.current.upArrowKey.wasPressedThisFrame)
         {
-            // First jump
+            // Jump should interrupt slide immediately.
+            if (isSliding)
+            {
+                EndSlide();
+            }
+
             if (jumpsUsed == 0)
             {
                 verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * firstJumpHeight);
                 jumpsUsed = 1;
+                TriggerJumpAnimation();
             }
-            // Double jump
             else if (jumpsUsed == 1)
             {
                 verticalVelocity = Mathf.Sqrt(2f * Mathf.Abs(gravity) * secondJumpHeight);
                 jumpsUsed = 2;
+                TriggerJumpAnimation();
             }
+        }
+    }
+
+    void HandleSlideInput()
+    {
+        if (Keyboard.current.sKey.wasPressedThisFrame ||
+            Keyboard.current.downArrowKey.wasPressedThisFrame)
+        {
+            // Slide should interrupt jump too:
+            // If airborne, we treat it like "slam down" + slide animation now.
+            if (!IsGrounded())
+            {
+                // Force stronger downward motion immediately (so it "feels" like a slam).
+                if (verticalVelocity > 0f)
+                {
+                    verticalVelocity = 0f;
+                }
+                verticalVelocity += (-fastFallExtra);
+            }
+
+            // Start/refresh slide even if already sliding (optional behavior).
+            StartSlideOrRefresh();
         }
     }
 
@@ -91,7 +152,7 @@ public class PlayerMovement : MonoBehaviour
     {
         bool grounded = IsGrounded();
 
-        // Extra downward acceleration while in air if holding down / S
+        // Hold down = extra fall speed while airborne
         float currentGravity = gravity;
         if (!grounded &&
             (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed))
@@ -104,7 +165,6 @@ public class PlayerMovement : MonoBehaviour
         Vector3 pos = transform.position;
         pos.y += verticalVelocity * Time.deltaTime;
 
-        // Land on the ground cleanly
         if (pos.y <= groundY)
         {
             pos.y = groundY;
@@ -120,6 +180,69 @@ public class PlayerMovement : MonoBehaviour
         Vector3 pos = transform.position;
         pos.x = Mathf.MoveTowards(pos.x, targetX, laneSwitchSpeed * Time.deltaTime);
         transform.position = pos;
+    }
+
+    void TickSlideTimer()
+    {
+        if (!isSliding)
+            return;
+
+        slideTimer -= Time.deltaTime;
+        if (slideTimer <= 0f)
+        {
+            EndSlide();
+        }
+    }
+
+    void StartSlideOrRefresh()
+    {
+        isSliding = true;
+        slideTimer = slideDuration;
+
+        if (animator != null)
+        {
+            animator.ResetTrigger("Jump");
+            animator.SetTrigger("Slide");
+            animator.SetBool("IsSliding", true);
+        }
+    }
+
+    void EndSlide()
+    {
+        isSliding = false;
+
+        if (animator != null)
+        {
+            animator.SetBool("IsSliding", false);
+        }
+    }
+
+    void AutoEndSlideIfAirborne()
+    {
+        // Optional: if you don't want "sliding pose" while flying through the air,
+        // end it as soon as we leave the ground.
+        if (isSliding && !IsGrounded())
+        {
+            EndSlide();
+        }
+    }
+
+    void TriggerJumpAnimation()
+    {
+        if (animator == null)
+            return;
+
+        animator.ResetTrigger("Slide");
+        animator.SetTrigger("Jump");
+    }
+
+    void UpdateAnimatorBools()
+    {
+        if (animator == null)
+            return;
+
+        animator.SetBool("IsGrounded", IsGrounded());
+        animator.SetBool("IsSliding", isSliding);
     }
 
     bool IsGrounded()
