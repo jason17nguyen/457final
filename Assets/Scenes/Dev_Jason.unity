@@ -173,7 +173,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 8ea547764f7d34e4bb3a5487ca4f435e, type: 2}
     - target: {fileID: 919132149155446097, guid: e9819c5ed0fda45228d0963917d4c93d, type: 3}
       propertyPath: m_Name
-      value: base
+      value: Model
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: e9819c5ed0fda45228d0963917d4c93d, type: 3}
       propertyPath: m_IsActive
@@ -229,7 +229,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4ab478715bdc449b39bee0a7977c19bb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  obstaclePrefab: {fileID: 4908891314281596555, guid: 5ba7d283515024dd5ae237b0e059e7bf, type: 3}
+  obstaclePrefab: {fileID: 4908891314281596555, guid: cbce694719fc1472fbc250994b82a25c, type: 3}
+  verticalShiftObstaclePrefab: {fileID: 4908891314281596555, guid: dcd62b26cb1de46a483a6b0cfd388659, type: 3}
+  sideShiftObstaclePrefab: {fileID: 4908891314281596555, guid: 9cc018ba77a2046a693f83264d30882d, type: 3}
   spawnZ: 25
   baseCenter: 1.2
   baseHalfRange: 0.4
@@ -238,9 +240,9 @@ MonoBehaviour:
   minimumCenter: 0.45
   minimumHalfRange: 0.08
   planeBaselineY: 0
-  lowHeightOffset: 0.5
-  highHeightOffset: 1.5
-  extraHighHeightOffset: 3
+  firstRowCenterOffset: 0.5
+  rowSpacing: 1.5
+  alwaysLeaveOneLaneOpen: 1
 --- !u!4 &105724158
 Transform:
   m_ObjectHideFlags: 0
@@ -701,11 +703,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
   laneSwitchSpeed: 14
   gravity: -50
-  firstJumpHeight: 3
-  secondJumpHeight: 1
+  firstJumpHeight: 3.5
+  secondJumpHeight: 2
   fastFallExtra: 100
   animator: {fileID: 0}
   slideDuration: 0.7
+  playerCollider: {fileID: 0}
+  slideHeightMultiplier: 0.5
 --- !u!136 &999964548
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -751,7 +755,7 @@ Rigidbody:
     m_Bits: 0
   m_ImplicitCom: 1
   m_ImplicitTensor: 1
-  m_UseGravity: 1
+  m_UseGravity: 0
   m_IsKinematic: 0
   m_Interpolate: 1
   m_Constraints: 80
@@ -911,6 +915,8 @@ MonoBehaviour:
   fastFallExtra: 100
   animator: {fileID: 0}
   slideDuration: 0.7
+  playerCollider: {fileID: 0}
+  slideHeightMultiplier: 0.5
 --- !u!54 &1626690757
 Rigidbody:
   m_ObjectHideFlags: 0
