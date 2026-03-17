@@ -7,9 +7,9 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float laneSwitchSpeed = 14f;
 
     [Header("Jump Settings")]
-    [SerializeField] private float gravity = -18f;
-    [SerializeField] private float firstJumpHeight = 1f;
-    [SerializeField] private float secondJumpHeight = 1.5f;
+    [SerializeField] private float gravity = -22f;
+    [SerializeField] private float firstJumpHeight = 2.8f;
+    [SerializeField] private float secondJumpHeight = 3.2f;
     [SerializeField] private float fastFallExtra = 100f;
 
     [Header("Animation")]
@@ -17,6 +17,10 @@ public class PlayerMovement : MonoBehaviour
 
     [Header("Slide")]
     [SerializeField] private float slideDuration = 0.7f;
+    
+    [Header("Slide Collider")]
+    [SerializeField] private CapsuleCollider playerCollider;
+    [SerializeField][Range(0.2f, 1f)] private float slideHeightMultiplier = 0.5f;
 
     private readonly float[] lanePositions = { -2f, 0f, 2f };
     private int currentLane = 1;
@@ -31,6 +35,9 @@ public class PlayerMovement : MonoBehaviour
 
     private const float groundTolerance = 0.01f;
 
+    private float standingColliderHeight;
+    private Vector3 standingColliderCenter;
+
     void Start()
     {
         targetX = lanePositions[currentLane];
@@ -40,6 +47,17 @@ public class PlayerMovement : MonoBehaviour
         pos.x = targetX;
         pos.y = groundY;
         transform.position = pos;
+
+        if (playerCollider == null)
+        {
+            playerCollider = GetComponent<CapsuleCollider>();
+        }
+
+        if (playerCollider != null)
+        {
+            standingColliderHeight = playerCollider.height;
+            standingColliderCenter = playerCollider.center;
+        }
 
         if (animator == null)
         {
@@ -59,6 +77,9 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
+        if (GameManager.Instance != null && GameManager.Instance.IsGameOver)
+            return;
+
         if (Keyboard.current == null)
             return;
 
@@ -73,7 +94,7 @@ public class PlayerMovement : MonoBehaviour
 
         TickSlideTimer();
         UpdateAnimatorBools();
-        AutoEndSlideIfAirborne(); // optional safety: prevents "sliding in midair forever"
+        AutoEndSlideIfAirborne();
     }
 
     void HandleLaneInput()
@@ -199,6 +220,8 @@ public class PlayerMovement : MonoBehaviour
         isSliding = true;
         slideTimer = slideDuration;
 
+        ApplySlideCollider();
+
         if (animator != null)
         {
             animator.ResetTrigger("Jump");
@@ -210,6 +233,7 @@ public class PlayerMovement : MonoBehaviour
     void EndSlide()
     {
         isSliding = false;
+        RestoreSlideCollider();
 
         if (animator != null)
         {
@@ -243,6 +267,30 @@ public class PlayerMovement : MonoBehaviour
 
         animator.SetBool("IsGrounded", IsGrounded());
         animator.SetBool("IsSliding", isSliding);
+    }
+
+    void ApplySlideCollider()
+    {
+        if (playerCollider == null)
+            return;
+
+        float newHeight = standingColliderHeight * slideHeightMultiplier;
+        float standingBottom = standingColliderCenter.y - (standingColliderHeight * 0.5f);
+
+        Vector3 newCenter = standingColliderCenter;
+        newCenter.y = standingBottom + (newHeight * 0.5f);
+
+        playerCollider.height = newHeight;
+        playerCollider.center = newCenter;
+    }
+
+    void RestoreSlideCollider()
+    {
+        if (playerCollider == null)
+            return;
+
+        playerCollider.height = standingColliderHeight;
+        playerCollider.center = standingColliderCenter;
     }
 
     bool IsGrounded()

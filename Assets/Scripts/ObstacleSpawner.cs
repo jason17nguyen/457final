@@ -1,8 +1,12 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class ObstacleSpawner : MonoBehaviour
 {
     [SerializeField] private GameObject obstaclePrefab;
+    [SerializeField] private GameObject verticalShiftObstaclePrefab;
+    [SerializeField] private GameObject sideShiftObstaclePrefab;
+
     [SerializeField] private float spawnZ = 20f;
 
     [Header("Spawn Timing")]
@@ -16,15 +20,24 @@ public class ObstacleSpawner : MonoBehaviour
     [Header("Plane Baseline")]
     [SerializeField] private float planeBaselineY = 0f;
 
-    [Header("Obstacle Height Offsets From Plane")]
-    [SerializeField] private float lowHeightOffset = 1f;
-    [SerializeField] private float highHeightOffset = 2f;
-    [SerializeField] private float extraHighHeightOffset = 3f;
+    [Header("Obstacle Height Layout")]
+    [SerializeField] private float firstRowCenterOffset = 0.5f;
+    [SerializeField] private float rowSpacing = 1.5f;
+
+    [Header("Fairness")]
+    [SerializeField] private bool alwaysLeaveOneLaneOpen = true;
 
     private readonly float[] laneX = { -2f, 0f, 2f };
 
     private float timer = 0f;
     private float currentSpawnInterval;
+
+    private enum ObstacleType
+    {
+        Normal,
+        VerticalShift,
+        SideShift
+    }
 
     void Start()
     {
@@ -67,19 +80,57 @@ public class ObstacleSpawner : MonoBehaviour
     void SpawnRow()
     {
         int obstacleCount = GetObstacleCountFromScore();
-        Vector2Int[] chosenSlots = GetRandomUniqueSlots(obstacleCount);
+
+        float lowY = planeBaselineY + firstRowCenterOffset;
 
         float[] spawnHeights =
         {
-            planeBaselineY + lowHeightOffset,
-            planeBaselineY + highHeightOffset,
-            planeBaselineY + extraHighHeightOffset
+            lowY,
+            lowY + rowSpacing,
+            lowY + (rowSpacing * 2f)
         };
 
-        for (int i = 0; i < chosenSlots.Length; i++)
+        bool[,] reserved = new bool[3, 3];
+
+        int safeLane = -1;
+        if (alwaysLeaveOneLaneOpen)
         {
-            int laneIndex = chosenSlots[i].x;    // 0,1,2
-            int heightIndex = chosenSlots[i].y;  // 0,1,2
+            safeLane = Random.Range(0, 3);
+            for (int height = 0; height < 3; height++)
+            {
+                reserved[safeLane, height] = true;
+            }
+        }
+
+        List<Vector2Int> candidateSlots = new List<Vector2Int>();
+
+        for (int lane = 0; lane < 3; lane++)
+        {
+            for (int height = 0; height < 3; height++)
+            {
+                if (!reserved[lane, height])
+                {
+                    candidateSlots.Add(new Vector2Int(lane, height));
+                }
+            }
+        }
+
+        ShuffleSlots(candidateSlots);
+
+        int spawned = 0;
+
+        for (int i = 0; i < candidateSlots.Count && spawned < obstacleCount; i++)
+        {
+            int laneIndex = candidateSlots[i].x;
+            int heightIndex = candidateSlots[i].y;
+
+            ObstacleType chosenType;
+            if (!TryChooseObstacleType(laneIndex, heightIndex, reserved, out chosenType))
+            {
+                continue;
+            }
+
+            ReserveSlotsForObstacle(chosenType, laneIndex, heightIndex, reserved);
 
             Vector3 spawnPos = new Vector3(
                 laneX[laneIndex],
@@ -87,7 +138,12 @@ public class ObstacleSpawner : MonoBehaviour
                 spawnZ
             );
 
-            Instantiate(obstaclePrefab, spawnPos, Quaternion.identity);
+            GameObject prefabToSpawn = GetPrefabForType(chosenType);
+            if (prefabToSpawn != null)
+            {
+                Instantiate(prefabToSpawn, spawnPos, Quaternion.identity);
+                spawned++;
+            }
         }
     }
 
@@ -100,51 +156,115 @@ public class ObstacleSpawner : MonoBehaviour
             score = GameManager.Instance.Score;
         }
 
-        // Early: 1
         if (score < 20)
             return 1;
 
-        // Mid: 1 or 2
         if (score < 40)
-            return Random.Range(1, 3); // 1, 2
+            return Random.Range(1, 3);
 
-        // Upper-mid: 2 or 3
         if (score < 70)
-            return Random.Range(2, 4); // 2, 3
+            return Random.Range(2, 4);
 
-        // Late: 3, 4, or 5
-        return Random.Range(3, 6); // 3, 4, 5
+        return Random.Range(3, 6);
     }
 
-    Vector2Int[] GetRandomUniqueSlots(int count)
+    bool TryChooseObstacleType(int laneIndex, int heightIndex, bool[,] reserved, out ObstacleType chosenType)
     {
-        // 9 total slots in the 3x3 grid:
-        // x = lane index (0..2)
-        // y = height index (0..2)
-        Vector2Int[] allSlots = new Vector2Int[]
+        List<ObstacleType> types = new List<ObstacleType>
         {
-            new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(2, 0),
-            new Vector2Int(0, 1), new Vector2Int(1, 1), new Vector2Int(2, 1),
-            new Vector2Int(0, 2), new Vector2Int(1, 2), new Vector2Int(2, 2)
+            ObstacleType.Normal,
+            ObstacleType.VerticalShift,
+            ObstacleType.SideShift
         };
 
-        // Shuffle the 9 slots
-        for (int i = 0; i < allSlots.Length; i++)
+        ShuffleTypes(types);
+
+        for (int i = 0; i < types.Count; i++)
         {
-            int swapIndex = Random.Range(i, allSlots.Length);
-            Vector2Int temp = allSlots[i];
-            allSlots[i] = allSlots[swapIndex];
-            allSlots[swapIndex] = temp;
+            if (CanPlaceObstacle(types[i], laneIndex, heightIndex, reserved))
+            {
+                chosenType = types[i];
+                return true;
+            }
         }
 
-        count = Mathf.Clamp(count, 1, 5);
+        chosenType = ObstacleType.Normal;
+        return false;
+    }
 
-        Vector2Int[] result = new Vector2Int[count];
-        for (int i = 0; i < count; i++)
+    bool CanPlaceObstacle(ObstacleType type, int laneIndex, int heightIndex, bool[,] reserved)
+    {
+        if (reserved[laneIndex, heightIndex])
+            return false;
+
+        if (type == ObstacleType.Normal)
         {
-            result[i] = allSlots[i];
+            return true;
         }
 
-        return result;
+        if (type == ObstacleType.VerticalShift)
+        {
+            if (heightIndex + 1 >= 3)
+                return false;
+
+            return !reserved[laneIndex, heightIndex + 1];
+        }
+
+        if (type == ObstacleType.SideShift)
+        {
+            if (laneIndex + 1 >= 3)
+                return false;
+
+            return !reserved[laneIndex + 1, heightIndex];
+        }
+
+        return false;
+    }
+
+    void ReserveSlotsForObstacle(ObstacleType type, int laneIndex, int heightIndex, bool[,] reserved)
+    {
+        reserved[laneIndex, heightIndex] = true;
+
+        if (type == ObstacleType.VerticalShift)
+        {
+            reserved[laneIndex, heightIndex + 1] = true;
+        }
+        else if (type == ObstacleType.SideShift)
+        {
+            reserved[laneIndex + 1, heightIndex] = true;
+        }
+    }
+
+    GameObject GetPrefabForType(ObstacleType type)
+    {
+        if (type == ObstacleType.VerticalShift)
+            return verticalShiftObstaclePrefab;
+
+        if (type == ObstacleType.SideShift)
+            return sideShiftObstaclePrefab;
+
+        return obstaclePrefab;
+    }
+
+    void ShuffleSlots(List<Vector2Int> slots)
+    {
+        for (int i = 0; i < slots.Count; i++)
+        {
+            int swapIndex = Random.Range(i, slots.Count);
+            Vector2Int temp = slots[i];
+            slots[i] = slots[swapIndex];
+            slots[swapIndex] = temp;
+        }
+    }
+
+    void ShuffleTypes(List<ObstacleType> types)
+    {
+        for (int i = 0; i < types.Count; i++)
+        {
+            int swapIndex = Random.Range(i, types.Count);
+            ObstacleType temp = types[i];
+            types[i] = types[swapIndex];
+            types[swapIndex] = temp;
+        }
     }
 }
