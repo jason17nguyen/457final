@@ -3,11 +3,17 @@ using System.Collections.Generic;
 
 public class ObstacleSpawner : MonoBehaviour
 {
-    [SerializeField] private GameObject obstaclePrefab;
+    [SerializeField] private GameObject bottomRowObstaclePrefab;
+    [SerializeField] private GameObject middleRowObstaclePrefab;
+    [SerializeField] private GameObject topRowObstaclePrefab;
     [SerializeField] private GameObject verticalShiftObstaclePrefab;
     [SerializeField] private GameObject sideShiftObstaclePrefab;
 
-    [SerializeField] private float spawnZ = 20f;
+    [SerializeField] private float baseSpawnZ = 20f;
+
+    [Header("Spawn Distance Scaling")]
+    [SerializeField] private float extraSpawnZPerSpeedMultiplier = 8f;
+    [SerializeField] private float maxExtraSpawnZ = 20f;
 
     [Header("Spawn Timing")]
     [SerializeField] private float baseCenter = 1.2f;
@@ -80,6 +86,7 @@ public class ObstacleSpawner : MonoBehaviour
     void SpawnRow()
     {
         int obstacleCount = GetObstacleCountFromScore();
+        float rowSpawnZ = GetCurrentSpawnZ();
 
         float lowY = planeBaselineY + firstRowCenterOffset;
 
@@ -135,10 +142,10 @@ public class ObstacleSpawner : MonoBehaviour
             Vector3 spawnPos = new Vector3(
                 laneX[laneIndex],
                 spawnHeights[heightIndex],
-                spawnZ
+                rowSpawnZ
             );
 
-            GameObject prefabToSpawn = GetPrefabForType(chosenType);
+            GameObject prefabToSpawn = GetPrefabForType(chosenType, heightIndex);
             if (prefabToSpawn != null)
             {
                 Instantiate(prefabToSpawn, spawnPos, Quaternion.identity);
@@ -235,7 +242,7 @@ public class ObstacleSpawner : MonoBehaviour
         }
     }
 
-    GameObject GetPrefabForType(ObstacleType type)
+    GameObject GetPrefabForType(ObstacleType type, int heightIndex)
     {
         if (type == ObstacleType.VerticalShift)
             return verticalShiftObstaclePrefab;
@@ -243,7 +250,18 @@ public class ObstacleSpawner : MonoBehaviour
         if (type == ObstacleType.SideShift)
             return sideShiftObstaclePrefab;
 
-        return obstaclePrefab;
+        return GetNormalObstaclePrefabForRow(heightIndex);
+    }
+
+    GameObject GetNormalObstaclePrefabForRow(int heightIndex)
+    {
+        if (heightIndex == 0)
+            return bottomRowObstaclePrefab;
+
+        if (heightIndex == 1)
+            return middleRowObstaclePrefab;
+
+        return topRowObstaclePrefab;
     }
 
     void ShuffleSlots(List<Vector2Int> slots)
@@ -266,5 +284,20 @@ public class ObstacleSpawner : MonoBehaviour
             types[i] = types[swapIndex];
             types[swapIndex] = temp;
         }
+    }
+
+    float GetCurrentSpawnZ()
+    {
+        float speedMultiplier = 1f;
+
+        if (GameManager.Instance != null)
+        {
+            speedMultiplier = GameManager.Instance.SpeedMultiplier;
+        }
+
+        float extraSpawnZ = (speedMultiplier - 1f) * extraSpawnZPerSpeedMultiplier;
+        extraSpawnZ = Mathf.Min(extraSpawnZ, maxExtraSpawnZ);
+
+        return baseSpawnZ + extraSpawnZ;
     }
 }
